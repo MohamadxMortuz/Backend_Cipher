@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 
 // Input validation helper
@@ -65,16 +66,25 @@ router.post('/register', validateInput, async (req, res) => {
 // Login endpoint
 router.post('/login', validateInput, async (req, res) => {
   try {
+    console.log('Login attempt for:', req.body.email);
     const { email, password } = req.body;
+
+    // Check MongoDB connection
+    if (mongoose.connection.readyState !== 1) {
+      console.error('MongoDB not connected');
+      return res.status(503).json({ message: 'Database unavailable' });
+    }
 
     // Find user
     const user = await User.findOne({ email });
+    console.log('User found:', !!user);
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Check password
     const isMatch = await user.comparePassword(password);
+    console.log('Password match:', isMatch);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -86,6 +96,7 @@ router.post('/login', validateInput, async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    console.log('Login successful for:', email);
     res.json({
       token,
       user: {
@@ -96,7 +107,7 @@ router.post('/login', validateInput, async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Error logging in' });
+    res.status(500).json({ message: 'Error logging in: ' + error.message });
   }
 });
 

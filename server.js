@@ -8,23 +8,96 @@ const auth = require("./routes/auth");
 
 const app = express();
 
-// Configure CORS properly
-const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] 
-    : ['http://localhost:5173', 'http://localhost:3000'],
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-
-app.use(cors(corsOptions));
+// Configure CORS - allow all origins for now
+app.use(cors({
+  origin: true,
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json({ limit: "5mb" }));
 
+// MongoDB connection with keep-alive and reconnection
 const MONGO = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/cipherstudio";
-mongoose.connect(MONGO, { useNewUrlParser:true, useUnifiedTopology:true }).then(()=>console.log("mongo ok")).catch(e=>console.error("mongo error:", e.message));
+
+mongoose.set('strictQuery', false);
+
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(MONGO, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 0,
+      keepAlive: true,
+      keepAliveInitialDelay: 300000,
+      maxPoolSize: 5,
+      minPoolSize: 1,
+      maxIdleTimeMS: 0,
+      heartbeatFrequencyMS: 10000,
+      retryWrites: true,
+      w: 'majority'
+    });
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+  } catch (error) {
+    console.error('MongoDB connection failed:', error.message);
+    process.exit(1);
+  }
+};
+
+// Handle connection events
+mongoose.connection.on('connected', () => {
+  console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+  console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongoose disconnected from MongoDB');
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  await mongoose.connection.close();
+  console.log('MongoDB connection closed.');
+  process.exit(0);
+});
+
+connectDB();
+
+// Health check and debug routes
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'CipherStudio Backend is running!', 
+    timestamp: new Date().toISOString(),
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    env: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    mongodb: mongoose.connection.readyState === 1,
+    uptime: process.uptime()
+  });
+});
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 app.use("/api/projects", projects);
 app.use("/api/auth", auth);
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ message: 'Route not found' });
+});
 
 const PORT = parseInt(process.env.PORT, 10) || 4000;
 const http = require('http');
