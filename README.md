@@ -32,7 +32,7 @@ npm run dev
 ## Environment Variables
 
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/cipherstudio
+MONGODB_URI=your-mogodb-uri
 PORT=4000
 JWT_SECRET=your-secret-key
 NODE_ENV=development
